@@ -13,6 +13,7 @@ import { checkBrowserAtStart } from "./browserHeal.ts";
 import { agentSessions } from "./agentSession.ts";
 import { onAgentMessage, onAgentReaction, onAgentVote } from "./agent.ts";
 import { fleet } from "./fleet.ts";
+import { closeTicketBrowser } from "./tickets/browser.ts";
 import { DEFAULT_AI_POLICY, restartMarker, type AiPolicy } from "@spot/shared";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
 import { SERVER_ID, adminConfigured, noteNetFailure, watchServerCommands, writeServerStatus } from "./stats.ts";
@@ -188,7 +189,7 @@ async function main() {
     const planned = code === 75 ? restartMarker(Date.now(), plannedReason()) : null;
     await Promise.all(mine.map((uid) => sessionRef(uid).set({ lastSeen: 0, ...(planned ? { restarting: planned } : {}) }, { merge: true }).catch(() => undefined)));
     if (planned) await db.collection("servers").doc(SERVER_ID).set({ restarting: planned }, { merge: true }).catch(() => undefined);
-    await Promise.all([sessions.stopAll(), agentSessions.stopAll()]);
+    await Promise.all([sessions.stopAll(), agentSessions.stopAll(), closeTicketBrowser()]);
     process.exit(code);
   };
   // SIGHUP too (terminal closed, ssh dropped): puppeteer's own handlers are off, so this drain is the only thing that closes Chromium cleanly.

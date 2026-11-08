@@ -66,7 +66,12 @@ export interface TicketLink {
   platform: TicketPlatform;
   accountId: string;
   listingId: string;
-  /** Every session of the listing counts toward this show's night on the same date. null = not linked. */
+  /**
+   * The shows this listing feeds. Each date counts toward the one of them that runs that night (its weekday, paused and
+   * extra dates), so a listing with Monday and Tuesday dates can feed a Monday show and a Tuesday show.
+   */
+  showIds?: string[];
+  /** The first of showIds, kept for links saved before showIds existed. null = not linked. */
   showId: string | null;
   /** Per-session exceptions: another show, or null to leave that session out. */
   sessionOverrides?: Record<string, string | null>;
@@ -86,12 +91,22 @@ export const linkId = (platform: TicketPlatform, accountId: string, listingId: s
 /** Data older than this gets a stale badge. */
 export const TICKET_STALE_MS = 30 * 60_000;
 
-/** The show a listing session counts toward, or null. */
-export function ticketShowFor(listing: Pick<TicketListing, "platform" | "accountId" | "listingId" | "sessionId">, links: ReadonlyMap<string, TicketLink>): string | null {
+type ShowNight = Pick<Show, "id" | "active" | "weekday" | "activeDates" | "pausedDates">;
+
+/** The shows a link feeds, old (showId) or new (showIds). */
+export const linkedShowIds = (link: Pick<TicketLink, "showId" | "showIds"> | undefined): string[] => (link ? (link.showIds?.length ? link.showIds : link.showId ? [link.showId] : []) : []);
+
+/**
+ * The show a listing session counts toward, or null. A per-date exception wins; otherwise the linked show that runs
+ * that night; when none does, the first linked show (ticketMismatch then flags it rather than counting it silently).
+ */
+export function ticketShowFor(listing: Pick<TicketListing, "platform" | "accountId" | "listingId" | "sessionId" | "showDate">, links: ReadonlyMap<string, TicketLink>, shows: readonly ShowNight[]): string | null {
   const link = links.get(linkId(listing.platform, listing.accountId, listing.listingId));
   if (!link) return null;
   if (link.sessionOverrides && listing.sessionId in link.sessionOverrides) return link.sessionOverrides[listing.sessionId] ?? null;
-  return link.showId ?? null;
+  const ids = linkedShowIds(link);
+  if (ids.length <= 1) return ids[0] ?? null;
+  return ids.find((id) => { const s = shows.find((x) => x.id === id); return s ? isShowOn(s, listing.showDate) : false; }) ?? ids[0];
 }
 
 export interface ShowTicketLine {
@@ -116,10 +131,10 @@ export interface ShowTickets {
 }
 
 /** Ticket totals for one show night, across every linked account and platform. */
-export function showTicketTotals(showId: string, date: string, listings: readonly TicketListing[], links: ReadonlyMap<string, TicketLink>): ShowTickets {
+export function showTicketTotals(showId: string, date: string, listings: readonly TicketListing[], links: ReadonlyMap<string, TicketLink>, shows: readonly ShowNight[]): ShowTickets {
   const lines: ShowTicketLine[] = [];
   for (const l of listings) {
-    if (l.showDate !== date || ticketShowFor(l, links) !== showId) continue;
+    if (l.showDate !== date || ticketShowFor(l, links, shows) !== showId) continue;
     lines.push({ key: l.key, accountId: l.accountId, platform: l.platform, eventName: l.eventName, publicUrl: l.publicUrl, showTime: l.showTime, sold: l.sold, capacity: l.capacity, syncedAt: l.syncedAt });
   }
   lines.sort((a, b) => a.showTime.localeCompare(b.showTime) || a.key.localeCompare(b.key));
@@ -133,8 +148,8 @@ export function showTicketTotals(showId: string, date: string, listings: readonl
 }
 
 /** A linked session whose date is not a night of its show (wrong weekday, paused, show inactive): shown, never counted silently. */
-export function ticketMismatch(listing: Pick<TicketListing, "platform" | "accountId" | "listingId" | "sessionId" | "showDate">, links: ReadonlyMap<string, TicketLink>, shows: readonly Pick<Show, "id" | "active" | "weekday" | "activeDates" | "pausedDates">[]): "no_show" | "not_show_day" | null {
-  const id = ticketShowFor(listing, links);
+export function ticketMismatch(listing: Pick<TicketListing, "platform" | "accountId" | "listingId" | "sessionId" | "showDate">, links: ReadonlyMap<string, TicketLink>, shows: readonly ShowNight[]): "no_show" | "not_show_day" | null {
+  const id = ticketShowFor(listing, links, shows);
   if (!id) return null;
   const show = shows.find((s) => s.id === id);
   if (!show) return "no_show";

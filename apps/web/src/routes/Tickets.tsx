@@ -7,6 +7,7 @@ import {
   TICKET_PLATFORM_NAMES,
   TICKET_STALE_MS,
   formatTime,
+  linkedShowIds,
   localNow,
   showTicketTotals,
   spotDateLabel,
@@ -21,7 +22,7 @@ import { useApp } from "../lib/app";
 import { timeAgo, useNow } from "../lib/data";
 import { connectAccount, disconnectAccount, linkListing, overrideSession, sendOtp, syncNow, useTickets } from "../lib/tickets";
 import { Button, Chip, ConfirmDialog, Empty, Field, IconButton, Info, Menu, MenuItem, PageHeader, SearchSelect, Sheet, Spinner, TextInput, cx } from "@spot/ui";
-import { IconAdd, IconCheck, IconMenuDots, IconRefresh, IconTicket, IconWarn } from "@spot/ui";
+import { IconAdd, IconCheck, IconClose, IconMenuDots, IconRefresh, IconTicket, IconWarn } from "@spot/ui";
 
 const STATUS_CHIP: Record<TicketAccount["status"], { label: string; tone: "success" | "error" | "primary" | "neutral" }> = {
   connected: { label: "Connected", tone: "success" },
@@ -194,6 +195,7 @@ function ListingGroup({ rows, account, link, shows, now }: { rows: TicketListing
   const first = rows[0];
   const links = useMemo(() => new Map(link ? [[`${first.platform}:${first.accountId}:${first.listingId}`, link]] : []), [link, first]);
   const options = useMemo(() => shows.map(showOption), [shows]);
+  const linked = linkedShowIds(link);
   const save = (p: Promise<unknown>) => void p.catch((e) => toast.error((e as Error).message));
   return (
     <li className="rounded-lg bg-surface-container p-4">
@@ -212,11 +214,25 @@ function ListingGroup({ rows, account, link, shows, now }: { rows: TicketListing
             )}
           </span>
         </span>
-        <SearchSelect value={link?.showId ?? ""} onChange={(v) => save(linkListing(uid, first, v || null, link))} options={options} label={`Show for ${first.eventName}`} placeholder="Belongs to show…" noneLabel="Not linked" wrapperClassName="w-full sm:w-64" />
+        <SearchSelect value="" onChange={(v) => v && !linked.includes(v) && save(linkListing(uid, first, [...linked, v], link))} options={options.filter((o) => !linked.includes(o.value))} label={`Add a show for ${first.eventName}`} placeholder={linked.length ? "Add another show…" : "Belongs to show…"} wrapperClassName="w-full sm:w-64" />
       </div>
+      {linked.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {linked.map((id) => {
+            const s = shows.find((x) => x.id === id);
+            return (
+              <span key={id} className="inline-flex items-center gap-1 rounded-full bg-secondary-container py-1 pr-1 pl-3 type-label-l text-on-secondary-container">
+                {s ? `${s.name} · ${DAY_SHORT[s.weekday]}` : "Deleted show"}
+                <IconButton icon={IconClose} label={`Unlink ${s?.name ?? "this show"}`} onClick={() => save(linkListing(uid, first, linked.filter((x) => x !== id), link))} className="size-7" />
+              </span>
+            );
+          })}
+          {linked.length > 1 && <span className="type-body-s text-on-surface-variant">Each date counts for the show running that night.</span>}
+        </div>
+      )}
       <ul className="mt-3 divide-y divide-outline-variant">
         {rows.map((r) => {
-          const showId = ticketShowFor(r, links);
+          const showId = ticketShowFor(r, links, shows);
           const mismatch = ticketMismatch(r, links, shows);
           const overridden = link?.sessionOverrides && r.sessionId in link.sessionOverrides;
           const show = shows.find((s) => s.id === showId);
@@ -292,12 +308,12 @@ function ComingUp({ listings, links, shows, today, now, accounts }: { listings: 
   const nights = useMemo(() => {
     const keys = new Set<string>();
     for (const l of listings) {
-      const id = ticketShowFor(l, links);
+      const id = ticketShowFor(l, links, shows);
       if (id && l.showDate >= today && !ticketMismatch(l, links, shows)) keys.add(`${l.showDate}|${id}`);
     }
     return [...keys].sort().slice(0, 12).map((k) => {
       const [date, showId] = k.split("|");
-      return { show: shows.find((s) => s.id === showId)!, t: showTicketTotals(showId, date, listings, links) };
+      return { show: shows.find((s) => s.id === showId)!, t: showTicketTotals(showId, date, listings, links, shows) };
     }).filter((n) => n.show);
   }, [listings, links, shows, today]);
   if (!nights.length) return null;
@@ -356,9 +372,10 @@ export function Tickets() {
     }
     const list = [...by.entries()].map(([k, rows]) => ({ k, rows: rows.sort((a, b) => (a.showDate + a.showTime).localeCompare(b.showDate + b.showTime)) }));
     // Not linked first: they need a decision.
-    return list.sort((a, b) => Number(Boolean(links.get(a.k)?.showId)) - Number(Boolean(links.get(b.k)?.showId)) || a.rows[0].showDate.localeCompare(b.rows[0].showDate));
+    const isLinked = (k: string) => Number(linkedShowIds(links.get(k)).length > 0);
+    return list.sort((a, b) => isLinked(a.k) - isLinked(b.k) || a.rows[0].showDate.localeCompare(b.rows[0].showDate));
   }, [listings, links, showEnded, today]);
-  const unlinked = groups.filter((g) => !links.get(g.k)?.showId).length;
+  const unlinked = groups.filter((g) => !linkedShowIds(links.get(g.k)).length).length;
 
   const syncAll = async () => {
     setSyncing(true);

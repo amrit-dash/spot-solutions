@@ -2,7 +2,7 @@
 // and the show strip use. Logins are sealed in the browser to the worker's key before they leave the page.
 import { useMemo } from "react";
 import { deleteDoc, setDoc } from "firebase/firestore";
-import { linkId, sealTo, type TicketAccount, type TicketLink, type TicketListing, type TicketPublicKey } from "@spot/shared";
+import { linkId, linkedShowIds, sealTo, type TicketAccount, type TicketLink, type TicketListing, type TicketPublicKey } from "@spot/shared";
 import { runCommand, useCollection, userDoc } from "./data";
 
 export function useTickets(uid: string | undefined) {
@@ -31,12 +31,12 @@ export const sendOtp = (uid: string, accountId: string, otp: string) => runComma
 export const disconnectAccount = (uid: string, accountId: string) => runCommand(uid, "ticket_disconnect", { accountId }, 2 * 60_000);
 export const syncNow = (uid: string, accountId?: string) => runCommand<{ accounts: number; listings: number }>(uid, "ticket_sync", accountId ? { accountId } : {}, 5 * 60_000);
 
-/** Link a whole listing to a show (null unlinks it); keeps its session exceptions. */
-export async function linkListing(uid: string, l: Pick<TicketListing, "platform" | "accountId" | "listingId">, showId: string | null, current?: TicketLink) {
+/** The shows a whole listing feeds (each date goes to the one running that night); [] unlinks it. Keeps date exceptions. */
+export async function linkListing(uid: string, l: Pick<TicketListing, "platform" | "accountId" | "listingId">, showIds: string[], current?: TicketLink) {
   const id = linkId(l.platform, l.accountId, l.listingId);
   const overrides = current?.sessionOverrides ?? {};
-  if (!showId && !Object.keys(overrides).length) return deleteDoc(userDoc(uid, "ticketLinks", id));
-  return setDoc(userDoc(uid, "ticketLinks", id), { platform: l.platform, accountId: l.accountId, listingId: l.listingId, showId, sessionOverrides: overrides, updatedAt: Date.now() } satisfies TicketLink);
+  if (!showIds.length && !Object.keys(overrides).length) return deleteDoc(userDoc(uid, "ticketLinks", id));
+  return setDoc(userDoc(uid, "ticketLinks", id), { platform: l.platform, accountId: l.accountId, listingId: l.listingId, showId: showIds[0] ?? null, showIds, sessionOverrides: overrides, updatedAt: Date.now() } satisfies TicketLink);
 }
 
 /** One session to another show, out (null), or back to the listing's show (undefined). */
@@ -45,5 +45,6 @@ export async function overrideSession(uid: string, l: Pick<TicketListing, "platf
   if (value === undefined) delete overrides[l.sessionId];
   else overrides[l.sessionId] = value;
   const id = linkId(l.platform, l.accountId, l.listingId);
-  return setDoc(userDoc(uid, "ticketLinks", id), { platform: l.platform, accountId: l.accountId, listingId: l.listingId, showId: current?.showId ?? null, sessionOverrides: overrides, updatedAt: Date.now() } satisfies TicketLink);
+  const showIds = linkedShowIds(current);
+  return setDoc(userDoc(uid, "ticketLinks", id), { platform: l.platform, accountId: l.accountId, listingId: l.listingId, showId: showIds[0] ?? null, showIds, sessionOverrides: overrides, updatedAt: Date.now() } satisfies TicketLink);
 }
