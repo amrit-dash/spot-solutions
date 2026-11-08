@@ -1709,6 +1709,9 @@ async function run(label, fn) {
   await refresh(true);
 }
 
+/** Worker log scroll: follow the newest lines (pinned) or stay where the owner scrolled to (top). */
+const logView = { pinned: true, top: 0 };
+
 function wire() {
   const s = state;
   wireHealth();
@@ -1746,12 +1749,18 @@ function wire() {
     const id = d.dataset.sec;
     secs[id] = d.open; saveSecs();
     if (id in liveBodies && d.open) { livePrev[id] = null; patchLive(); pollLive(); }
-    if (id === "logs" && d.open) { const l = $("#logs"); if (l) l.scrollTop = l.scrollHeight; }
+    if (id === "logs" && d.open) { const l = $("#logs"); logView.pinned = true; if (l) l.scrollTop = l.scrollHeight; }
     if (id === "storage" && d.open) refresh(true);
   });
   wireLayout();
   wireStorage();
-  const logs = $("#logs"); if (logs) logs.scrollTop = logs.scrollHeight;
+  // The log follows new lines only while it's scrolled to the bottom. Each refresh redraws it, so where the owner was
+  // reading is kept across redraws instead of jumping back down every time.
+  const logs = $("#logs");
+  if (logs) {
+    logs.scrollTop = logView.pinned ? logs.scrollHeight : logView.top;
+    logs.onscroll = () => { logView.pinned = logs.scrollHeight - logs.scrollTop - logs.clientHeight < 24; logView.top = logs.scrollTop; };
+  }
   document.querySelectorAll("[data-worker]").forEach((b) => b.onclick = async () => {
     const act = b.dataset.worker;
     if (act === "stop" && !(await askConfirm(b.dataset.models === "1" ? "Stop the server?\n\nWhatsApp is saved and closed and the local model stops too, so your messages are not read until you press Start server. It stays stopped after a restart or an update. This page stays up." : "Stop the worker?\n\nWhatsApp is saved and closed, and your messages are not read until you press Start. It stays stopped after a restart or an update. The local model keeps running."))) return;

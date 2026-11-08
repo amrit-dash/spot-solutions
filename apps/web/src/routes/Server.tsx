@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -194,9 +194,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
           <p className="type-body-s text-on-surface-variant">Sent only while this is open, and updates every 30 s.</p>
         </div>
         {s.logs && s.logs.length > 0 ? (
-          <pre className="max-h-80 overflow-auto bg-surface-container px-4 py-3 font-mono text-xs leading-5 whitespace-pre-wrap text-on-surface-variant" ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
-            {s.logs.join("\n")}
-          </pre>
+          <LogView lines={s.logs} />
         ) : (
           <p className="bg-surface-container px-4 py-3 type-body-s text-on-surface-variant">{online ? "Asking the server for its log. This can take up to 30 seconds." : unknown ? "You're offline, so there is no log to show." : "The server is offline, so there is no log to show."}</p>
         )}
@@ -215,6 +213,31 @@ function ServerCard({ s }: { s: ServerStatus }) {
       )}
       </div>
     </Collapsible>
+  );
+}
+
+/**
+ * The worker log. It follows new lines only while you're at the bottom: scroll up to read and it stays put through the
+ * 30-second refreshes (it used to jump back down on every one); scroll back to the bottom and it follows again.
+ */
+function LogView({ lines }: { lines: string[] }) {
+  const ref = useRef<HTMLPreElement>(null);
+  const pinned = useRef(true);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [lines]);
+  return (
+    <pre
+      ref={ref}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+      }}
+      className="max-h-80 overflow-auto bg-surface-container px-4 py-3 font-mono text-xs leading-5 whitespace-pre-wrap text-on-surface-variant"
+    >
+      {lines.join("\n")}
+    </pre>
   );
 }
 
