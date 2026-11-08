@@ -10,9 +10,10 @@ export const Shows = lazyRoute(() => import("../routes/Shows").then((m) => ({ de
 export const SettingsPage = lazyRoute(() => import("../routes/Settings").then((m) => ({ default: m.SettingsPage })));
 export const ServerPage = lazyRoute(() => import("../routes/Server").then((m) => ({ default: m.ServerPage })));
 export const AdminArea = lazyRoute(() => import("../routes/Admin").then((m) => ({ default: m.AdminArea })));
+export const TicketsPage = lazyRoute(() => import("../routes/Tickets").then((m) => ({ default: m.Tickets })));
 export const HelpPage = lazyRoute(() => import("../routes/Help").then((m) => ({ default: m.HelpPage })));
 
-const BY_PATH: Record<string, RouteComponent> = { "/": Home, "/requests": Requests, "/messages": Messages, "/lineup": LineupBoard, "/comics": Comics, "/shows": Shows, "/settings": SettingsPage };
+const BY_PATH: Record<string, RouteComponent> = { "/": Home, "/requests": Requests, "/messages": Messages, "/lineup": LineupBoard, "/comics": Comics, "/shows": Shows, "/settings": SettingsPage, "/tickets": TicketsPage };
 
 /** Once signed in: the open page's chunk now, the everyday pages while idle, and any page whose link is hovered or touched. */
 export const prefetchRoutes = () => prefetch(BY_PATH, ["/requests", "/lineup", "/comics", "/shows", "/messages", "/", "/settings"]);

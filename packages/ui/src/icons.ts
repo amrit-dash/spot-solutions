@@ -58,3 +58,4 @@ export { default as IconBell } from "~icons/solar/bell-bold-duotone";
 export { default as IconPlus } from "~icons/solar/add-linear";
 export { default as IconPlay } from "~icons/solar/play-bold-duotone";
 export { default as IconPause } from "~icons/solar/pause-bold-duotone";
+export { default as IconTicket } from "~icons/solar/ticket-bold-duotone";

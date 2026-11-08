@@ -1,0 +1,6 @@
+.env
+state/
+captures/
+*.har
+.venv/
+__pycache__/

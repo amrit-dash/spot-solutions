@@ -1,6 +1,6 @@
 import { signOut } from "firebase/auth";
 import { deriveServer } from "@spot/shared";
-import { AccountMenu as BaseAccountMenu, type AccountStatus, AccountMenuItem, IconLightbulb, IconServer, IconShield, cx } from "@spot/ui";
+import { AccountMenu as BaseAccountMenu, type AccountStatus, AccountMenuItem, IconLightbulb, IconServer, IconShield, IconTicket, cx } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
 import { useServers } from "../lib/servers";
@@ -24,6 +24,16 @@ export function AccountMenu({ align = "right", status }: { align?: "left" | "rig
       onSignOut={() => void clearChatCache().finally(() => signOut(auth))}
       extra={(close, nav) => (
         <>
+          {/* Tickets isn't in the phone's bottom bar (six items), so phones reach it here. */}
+          <AccountMenuItem
+            icon={IconTicket}
+            onClick={() => {
+              close();
+              nav("/tickets");
+            }}
+          >
+            Tickets
+          </AccountMenuItem>
           {(admin || (servers && servers.length > 0)) && (
             <AccountMenuItem
               icon={IconServer}

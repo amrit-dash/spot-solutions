@@ -22,6 +22,7 @@ import { askDidntHappen } from "./noShow.ts";
 import { maybePhotoSweep } from "./profilePics.ts";
 import { maybeSweepMedia } from "./media.ts";
 import { refreshGroups } from "./membershipRefresh.ts";
+import { maybeSyncTickets } from "./tickets/sync.ts";
 
 const TICK_MS = 2 * 60_000;
 const MIRROR_TICK_MS = 30_000;
@@ -75,6 +76,8 @@ export function startScheduler(uids: () => Iterable<string>) {
       }
       // Fetched pictures and uploads that were never sent expire even while WhatsApp is down.
       if (client || fleet.holds(uid)) void maybeSweepMedia(uid).catch((e) => console.error("[media-sweep]", e.message));
+      // Ticket counts from connected BookMyShow accounts: they don't need WhatsApp, only the lease (tickets/sync.ts).
+      if (fleet.holds(uid)) void maybeSyncTickets(uid).catch((e) => console.error("[tickets]", e.message));
       if (!client) continue;
       void tick(uid).catch((e) => console.error("[scheduler]", e));
       void expireOffers(uid).catch((e) => console.error("[offers]", e));

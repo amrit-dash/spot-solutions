@@ -8,7 +8,7 @@ import { isStandalone } from "./lib/standalone";
 import { useAccess } from "./lib/access";
 import { AdminOnly } from "./components/AdminOnly";
 import { OverfillHost } from "./lib/overfill";
-import { AdminArea, Comics, HelpPage, Home, LineupBoard, Messages, Requests, ServerPage, SettingsPage, Shows, prefetchRoutes } from "./lib/lazyRoutes";
+import { AdminArea, Comics, HelpPage, Home, LineupBoard, Messages, Requests, ServerPage, SettingsPage, Shows, TicketsPage, prefetchRoutes } from "./lib/lazyRoutes";
 import { RouteSkeleton } from "./components/RouteSkeleton";
 
 // Pages outside the signed-in app load only when someone lands on them.
@@ -86,6 +86,7 @@ export default function App() {
               <Route path="/comics" element={<Comics />} />
               <Route path="/shows" element={<Shows />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/tickets" element={<TicketsPage />} />
               <Route path="/server" element={<ServerPage />} />
               <Route path="/admin" element={<AdminOnly><AdminArea /></AdminOnly>} />
               <Route path="/help" element={<AdminOnly><HelpPage /></AdminOnly>} />

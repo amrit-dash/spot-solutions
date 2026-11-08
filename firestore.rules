@@ -191,6 +191,21 @@ service cloud.firestore {
         allow delete: if isOwner(uid);
       }
       match /polls/{doc}   { allow read: if isOwner(uid); }
+      // Ticket sales (packages/shared/src/tickets.ts). Accounts, listings and the seal public key are written only by the
+      // worker. Links (which show a listing belongs to) are the curator's. ticketVault (encrypted logins and tokens) has no
+      // client rule at all, so it is never readable or writable from the app.
+      match /ticketAccounts/{doc} { allow read: if isOwner(uid); }
+      match /ticketListings/{doc} { allow read: if isOwner(uid); }
+      match /ticketPublic/{doc}   { allow read: if isOwner(uid); }
+      match /ticketLinks/{doc} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['platform', 'accountId', 'listingId', 'showId', 'sessionOverrides', 'updatedAt'])
+          && request.resource.data.platform in ['bms']
+          && request.resource.data.accountId is string && request.resource.data.listingId is string
+          && (request.resource.data.showId == null || request.resource.data.showId is string)
+          && request.resource.data.updatedAt is number;
+      }
 
       // Commands: curator can enqueue pending commands and read results, nothing else.
       match /commands/{id} {
@@ -202,7 +217,7 @@ service cloud.firestore {
         allow delete: if isOwner(uid) && resource.data.type in ['list_threads', 'get_thread', 'get_media', 'react_message', 'send_media', 'send_image', 'fetch_media', 'summarize_thread', 'list_voice_sources', 'parse_roster'];
         allow create: if isOwner(uid) && isApproved(uid)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account', 'list_contacts', 'pull_group_members', 'list_group_members', 'send_lineup_updates', 'reclassify_requests', 'scan_history', 'reconcile_waiting', 'apply_reconcile', 'learn_voice', 'preview_voice', 'apply_follow_up', 'connect_agent', 'logout_agent', 'test_agent', 'list_threads', 'get_thread', 'get_media', 'react_message', 'send_media', 'send_image', 'fetch_media', 'summarize_thread', 'list_voice_sources', 'parse_roster', 'cleanup_group', 'settle_round', 'send_ask', 'ask_for_spot', 'profile_pics', 'merge_comics', 'drop_from_lineup'];
+          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account', 'list_contacts', 'pull_group_members', 'list_group_members', 'send_lineup_updates', 'reclassify_requests', 'scan_history', 'reconcile_waiting', 'apply_reconcile', 'learn_voice', 'preview_voice', 'apply_follow_up', 'connect_agent', 'logout_agent', 'test_agent', 'list_threads', 'get_thread', 'get_media', 'react_message', 'send_media', 'send_image', 'fetch_media', 'summarize_thread', 'list_voice_sources', 'parse_roster', 'cleanup_group', 'settle_round', 'send_ask', 'ask_for_spot', 'profile_pics', 'merge_comics', 'drop_from_lineup', 'ticket_key', 'ticket_connect', 'ticket_otp', 'ticket_disconnect', 'ticket_sync'];
         // Admins can move any approved curator's account to another server (Server page → Fleet).
         allow create: if isAdmin() && isApproved(uid)
           && request.resource.data.status == 'pending'

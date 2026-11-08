@@ -2,7 +2,7 @@ import { clock, deriveLink, phoneHeadline, restartLabel } from "@spot/shared";
 import { type ReactNode } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { toast } from "sonner";
-import { AppShell, IconCalendar, IconCalendarMark, IconChat, IconComics, IconInbox, IconMic, IconSettings, type NavEntry } from "@spot/ui";
+import { AppShell, IconCalendar, IconCalendarMark, IconChat, IconComics, IconInbox, IconMic, IconSettings, IconTicket, type NavEntry } from "@spot/ui";
 import { CuratingLogo } from "./CuratingLogo";
 import { auth, google } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
@@ -19,6 +19,7 @@ const NAV: NavEntry[] = [
   { to: "/lineup", label: "Lineup", icon: IconMic },
   { to: "/comics", label: "Comics", icon: IconComics },
   { to: "/shows", label: "Shows", icon: IconCalendar },
+  { to: "/tickets", label: "Tickets", icon: IconTicket, phoneHidden: true },
   // Settings lives in the account menu (top right) on phones, so the bar keeps six roomy items.
   { to: "/settings", label: "Settings", icon: IconSettings, phoneHidden: true },
 ];

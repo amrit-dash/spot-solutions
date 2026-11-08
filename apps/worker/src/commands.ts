@@ -78,6 +78,7 @@ import { askForSpot } from "./groupWatch.ts";
 import { sendAsk } from "./asks.ts";
 import { profilePics } from "./profilePics.ts";
 import { mergeComicDocs } from "./mergeComics.ts";
+import { ticketConnect, ticketDisconnect, ticketKey, ticketOtp, ticketSyncNow } from "./tickets/sync.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
 
@@ -696,6 +697,12 @@ const handlers: Record<Command["type"], Handler> = {
   merge_comics: (uid, payload) => mergeComicDocs(uid, payload),
   /** "Remove from lineup" on a show-group pill: the same drop-out flow as a comic's own cancellation (slot freed, group by the usual rules, curator told). */
   drop_from_lineup: (uid, { lineupId: id, comicId }) => dropFromLineup(uid, sessions.require(uid), String(comicId), String(id)),
+  // Ticket sales (tickets/sync.ts). None of these need WhatsApp.
+  ticket_key: (uid) => ticketKey(uid),
+  ticket_connect: ticketConnect,
+  ticket_otp: ticketOtp,
+  ticket_disconnect: ticketDisconnect,
+  ticket_sync: ticketSyncNow,
 };
 
 /** Commands whose result holds chat text: it expires fast (TTL_DAYS.messages) and the app deletes it once read. */

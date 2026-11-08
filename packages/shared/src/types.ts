@@ -645,7 +645,12 @@ export type CommandType =
   | "ask_for_spot"
   | "profile_pics"
   | "merge_comics"
-  | "drop_from_lineup";
+  | "drop_from_lineup"
+  | "ticket_key"
+  | "ticket_connect"
+  | "ticket_otp"
+  | "ticket_disconnect"
+  | "ticket_sync";
 
 export interface Command {
   type: CommandType;
