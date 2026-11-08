@@ -70,7 +70,7 @@ describe("matchGroupThreads", () => {
 
 describe("posts after the show", () => {
   // Monday shows; 26 Oct 2026 is a Monday.
-  const show = { weekday: 1, groupPostsSent: {} as Record<string, string> };
+  const show = { weekday: 1 as const, groupPostsSent: {} as Record<string, string> };
   const post = { id: "after", template: "custom" as const, daysBefore: -1, time: "11:00", enabled: true };
   it("labels days after", () => {
     expect(whenLabel(-1)).toBe("Day after");

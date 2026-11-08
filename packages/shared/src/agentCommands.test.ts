@@ -201,7 +201,7 @@ describe("direct add switches (confirmation message, group)", () => {
   it("the question says what will happen", () => {
     const on = planAction({ name: "offer", person: "rahul", day: "monday", direct: true }, world(), people, o);
     if (on.pending?.stage !== "confirm") throw new Error("expected confirm");
-    expect(on.reply ?? on.pending.question ?? JSON.stringify(on.pending)).toMatch(/get your confirmation message, they join the show's group/);
+    expect(on.reply ?? on.pending.summary ?? JSON.stringify(on.pending)).toMatch(/get your confirmation message, they join the show's group/);
     const off = planAction({ name: "offer", person: "rahul", day: "monday", direct: true, confirm: false, addToGroup: false }, world(), people, o);
     if (off.pending?.stage !== "confirm") throw new Error("expected confirm");
     expect(off.pending.plan).toMatchObject({ type: "offer", direct: true, confirm: false, addToGroup: false });

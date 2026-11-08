@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { cleanupAlreadyStarted, cleanupStep, cleanupTriggerPost, migrateCleanupTrigger, type GroupCleanup } from "./groupCleanup.ts";
 import type { GroupPost } from "./groupPosts.ts";
+import type { Lineup } from "./types.ts";
 
 const post = (p: Partial<GroupPost>): GroupPost => ({ id: "p1", template: "groupThanks", daysBefore: -1, time: "10:00", enabled: true, ...p });
 const cleanup = (c: Partial<GroupCleanup> = {}): GroupCleanup => ({ enabled: true, time: "11:00", ...c });
-const lineup = (p = {}) => ({ date: "2026-10-26", status: "confirmed" as const, outcome: "happened" as const, ...p });
+type TestLineup = Pick<Lineup, "date" | "status" | "outcome" | "cleanup"> & { backfilled?: boolean };
+const lineup = (p: Partial<TestLineup> = {}): TestLineup => ({ date: "2026-10-26", status: "confirmed", outcome: "happened", ...p });
 const now = { date: "2026-10-27", time: "12:00" };
 
 describe("cleanupTriggerPost: one source of truth", () => {

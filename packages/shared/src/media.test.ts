@@ -166,7 +166,7 @@ describe("rules files agree with the code", () => {
   it("firestore.rules lets the owner create and delete send_image and fetch_media commands", () => {
     const rules = read("firestore.rules");
     const lists = rules.match(/request\.resource\.data\.type in \[[^\]]*\]/g) ?? [];
-    expect(lists.filter((l) => l.includes("'send_image'") && l.includes("'fetch_media'")).length).toBeGreaterThanOrEqual(1);
+    expect(lists.filter((l: string) => l.includes("'send_image'") && l.includes("'fetch_media'")).length).toBeGreaterThanOrEqual(1);
     const del = rules.split("\n").find((l) => l.includes("allow delete: if isOwner(uid) && resource.data.type in")) ?? "";
     expect(del).toContain("'send_image'");
     expect(del).toContain("'fetch_media'");

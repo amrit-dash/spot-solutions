@@ -173,7 +173,7 @@ describe("groupModeOf", () => {
 
 import { adhocToldPatch, toldSent } from "./lineupUpdates.ts";
 describe("ad hoc comics are recorded as told", () => {
-  const show = { includeSlotTime: false, defaultMinutes: null };
+  const show = { includeSlotTime: false, defaultMinutes: undefined };
   const draft = { status: "draft" as const, sent: null, slots: [{ comicId: "a" }, { comicId: "b" }, { comicId: "x", adhoc: true }] };
   it("on a draft, only the told comic gets an entry (the rest still get Confirm & send)", () => {
     expect(Object.keys(toldSent(draft, show, "x", 5))).toEqual(["x"]);

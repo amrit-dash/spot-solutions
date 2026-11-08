@@ -110,7 +110,7 @@ export function movesOffOtherShows(rules: Pick<RuleSettings, "onePerWeek">, show
  * Who a week's lineup starts with: the show's POCs, regulars, co-hosts and group admins, in that order, each once.
  * Same list for the first open of a week, "Add POCs, regulars and co-hosts" and the preview on the calendar.
  */
-export function defaultLineupIds(show: Pick<Show, "pocs" | "regulars" | "protected"> | undefined, adminIds: readonly string[] = []): string[] {
+export function defaultLineupIds(show: Partial<Pick<Show, "pocs" | "regulars" | "protected">> | undefined, adminIds: readonly string[] = []): string[] {
   return [...new Set([...(show?.pocs ?? []), ...(show?.regulars ?? []), ...(show?.protected ?? []), ...adminIds])];
 }
 

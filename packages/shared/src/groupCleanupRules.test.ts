@@ -43,7 +43,7 @@ describe("cleanupOutcome", () => {
 });
 
 describe("each outcome x rule", () => {
-  const rows: [string, typeof happened, Partial<GroupCleanup>, string][] = [
+  const rows: [string, typeof happened | typeof didnt, Partial<GroupCleanup>, string][] = [
     ["happened + clear", happened, { onHappened: "clear" }, "run"],
     ["happened + ask", happened, { onHappened: "ask" }, "ask"],
     ["happened + keep", happened, { onHappened: "keep" }, "keep"],

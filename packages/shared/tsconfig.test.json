@@ -1,0 +1,13 @@
+{
+  "//": "Tests run in Node (vitest) and may read files with node:fs. The source must not: tsconfig.json checks it without Node types, so shared code stays browser-safe.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": []
+}
