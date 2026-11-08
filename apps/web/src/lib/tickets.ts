@@ -2,7 +2,7 @@
 // and the show strip use. Logins are sealed in the browser to the worker's key before they leave the page.
 import { useMemo } from "react";
 import { deleteDoc, setDoc } from "firebase/firestore";
-import { linkId, linkedShowIds, sealTo, type TicketAccount, type TicketLink, type TicketListing, type TicketPublicKey } from "@spot/shared";
+import { linkId, linkedShowIds, sealTo, type TicketAccount, type TicketLink, type TicketListing, type TicketPlatform, type TicketPublicKey } from "@spot/shared";
 import { runCommand, useCollection, userDoc } from "./data";
 
 export function useTickets(uid: string | undefined) {
@@ -21,10 +21,10 @@ export interface ConnectResult {
 }
 
 /** Seal the login to the worker's key (fetching or creating it first), then hand it over. */
-export async function connectAccount(uid: string, input: { label: string; login: string; password: string; accountId?: string }): Promise<ConnectResult> {
+export async function connectAccount(uid: string, input: { platform: TicketPlatform; label: string; login: string; password: string; accountId?: string }): Promise<ConnectResult> {
   const key = await runCommand<TicketPublicKey>(uid, "ticket_key", {}, 60_000);
   const sealed = await sealTo(key.x25519, JSON.stringify({ login: input.login, password: input.password }));
-  return runCommand<ConnectResult>(uid, "ticket_connect", { sealed, label: input.label, ...(input.accountId ? { accountId: input.accountId } : {}) }, 3 * 60_000);
+  return runCommand<ConnectResult>(uid, "ticket_connect", { sealed, platform: input.platform, label: input.label, ...(input.accountId ? { accountId: input.accountId } : {}) }, 3 * 60_000);
 }
 
 export const sendOtp = (uid: string, accountId: string, otp: string) => runCommand<ConnectResult>(uid, "ticket_otp", { accountId, otp }, 3 * 60_000);

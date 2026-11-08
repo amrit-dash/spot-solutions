@@ -2,11 +2,12 @@
 // cadence. Runs only on the server holding the account's lease (commands are gated by fleet.gate; the tick is called
 // from scheduler.ts for held accounts only). One account failing never stops the others or the worker.
 import { randomBytes } from "node:crypto";
-import { maskLogin, type SealedBox, type TicketAccount, type TicketAccountStatus, type TicketLink, type TicketListing } from "@spot/shared";
+import { maskLogin, type SealedBox, type TicketAccount, type TicketAccountStatus, type TicketLink, type TicketListing, type TicketPlatform } from "@spot/shared";
 import { col, db, expireAt, FieldValue } from "../firebase.ts";
 import { TTL_DAYS } from "@spot/shared";
 import { TicketAuthError, collectBms, loginOtp, loginPassword, tokenSecondsLeft, type ApiCall } from "./bms.ts";
 import { withTicketBrowser } from "./browser.ts";
+import { collectDistrict, loginDistrictOtp, newDistrictKey, nodeFetch, normalisePhone, sendDistrictOtp } from "./district.ts";
 import { deleteSecret, ensureSealKey, loadSecret, openFromApp, saveSecret } from "./store.ts";
 
 /** Log in again when the token has less than this left, so an OTP request lands at a calm moment, not mid-show. */
@@ -61,8 +62,18 @@ async function freshToken(call: ApiCall, uid: string, accountId: string): Promis
   return token;
 }
 
-async function syncOne(call: ApiCall, uid: string, acc: TicketAccount, notifyOnAuth: boolean) {
+/** Pull one account. `call` is the ticket browser (BookMyShow); District needs none and ignores it. */
+async function syncOne(call: ApiCall | null, uid: string, acc: TicketAccount, notifyOnAuth: boolean) {
   try {
+    if (acc.platform === "district") {
+      const s = await loadSecret(uid, acc.id);
+      if (!s?.district) throw new TicketAuthError("needs_login", "This account's District login isn't saved on the servers any more. Connect it again.");
+      const rows = await collectDistrict(nodeFetch, s.district, acc.id);
+      await saveListings(uid, acc.id, rows);
+      await setStatus(uid, acc.id, "connected", null, { lastSyncedAt: Date.now(), lastError: null });
+      return rows.length;
+    }
+    if (!call) throw new Error("BookMyShow needs the ticket browser");
     const token = await freshToken(call, uid, acc.id);
     const rows = await collectBms(call, token, acc.id);
     await saveListings(uid, acc.id, rows);
@@ -87,9 +98,14 @@ export async function syncTickets(uid: string, onlyId?: string, opts: { notify?:
   if (!list.length) return { accounts: 0, listings: 0 };
   lastRun.set(uid, Date.now());
   let listings = 0;
-  await withTicketBrowser(async (call) => {
-    for (const acc of list) listings += await syncOne(call, uid, acc, opts.notify ?? true);
-  });
+  // District is plain HTTPS; only BookMyShow accounts open the ticket browser.
+  for (const acc of list.filter((a) => a.platform === "district")) listings += await syncOne(null, uid, acc, opts.notify ?? true);
+  const bms = list.filter((a) => a.platform !== "district");
+  if (bms.length) {
+    await withTicketBrowser(async (call) => {
+      for (const acc of bms) listings += await syncOne(call, uid, acc, opts.notify ?? true);
+    });
+  }
   return { accounts: list.length, listings };
 }
 
@@ -133,10 +149,12 @@ export async function ticketConnect(uid: string, payload: Record<string, unknown
   // The sealed login is useless without the private key, but it still doesn't stay on the command doc.
   if (commandId) await col(uid, "commands").doc(commandId).update({ payload: FieldValue.delete() }).catch(() => undefined);
   const box = payload.sealed as SealedBox;
-  const label = String(payload.label ?? "").trim().slice(0, 60) || "BookMyShow account";
+  const platform: TicketPlatform = payload.platform === "district" ? "district" : "bms";
+  const label = String(payload.label ?? "").trim().slice(0, 60) || (platform === "district" ? "District account" : "BookMyShow account");
   const id = typeof payload.accountId === "string" && payload.accountId ? payload.accountId : randomBytes(6).toString("hex");
-  const { login, password } = await openFromApp(uid, box);
+  const { login, password } = await openFromApp(uid, box, { needPassword: platform === "bms" });
   const existing = (await accounts(uid).doc(id).get()).data() as TicketAccount | undefined;
+  if (platform === "district") return connectDistrict(uid, id, label, login, existing);
   const acc: TicketAccount = { id, platform: "bms", label, loginHint: maskLogin(login), status: "connecting", statusText: "Signing in to BookMyShow…", connectedAt: existing?.connectedAt ?? Date.now() };
   await accounts(uid).doc(id).set(acc, { merge: true });
   await saveSecret(uid, id, { login, password, token: null });
@@ -159,6 +177,23 @@ export async function ticketConnect(uid: string, payload: Record<string, unknown
   });
 }
 
+/** District: a fresh device key, then District texts an OTP to the phone. The card asks for it (ticket_otp). */
+async function connectDistrict(uid: string, id: string, label: string, rawPhone: string, existing?: TicketAccount) {
+  const phone = normalisePhone(rawPhone);
+  const acc: TicketAccount = { id, platform: "district", label, loginHint: maskLogin(phone), status: "connecting", statusText: "Asking District for an OTP…", connectedAt: existing?.connectedAt ?? Date.now() };
+  await accounts(uid).doc(id).set(acc, { merge: true });
+  try {
+    const key = await newDistrictKey(nodeFetch);
+    await sendDistrictOtp(nodeFetch, key, phone);
+    await saveSecret(uid, id, { login: phone, password: "", district: key });
+    await setStatus(uid, id, "needs_otp", `District sent an OTP by SMS to ${maskLogin(phone)}. Enter it to finish connecting.`);
+    return { accountId: id, status: "needs_otp", message: "District sent an OTP." };
+  } catch (e) {
+    await setStatus(uid, id, "error", (e as Error).message);
+    throw e;
+  }
+}
+
 export async function ticketOtp(uid: string, payload: Record<string, unknown>, commandId?: string) {
   if (commandId) await col(uid, "commands").doc(commandId).update({ payload: FieldValue.delete() }).catch(() => undefined);
   const id = String(payload.accountId ?? "");
@@ -167,6 +202,18 @@ export async function ticketOtp(uid: string, payload: Record<string, unknown>, c
   const s = await loadSecret(uid, id);
   const acc = (await accounts(uid).doc(id).get()).data() as TicketAccount | undefined;
   if (!s || !acc) throw new Error("This account isn't connecting any more. Start again with Connect.");
+  if (acc.platform === "district") {
+    if (!s.district) throw new Error("This account isn't connecting any more. Start again with Connect.");
+    try {
+      await loginDistrictOtp(nodeFetch, s.district, s.login, otp);
+      const n = await syncOne(null, uid, { ...acc, status: "connected" }, false);
+      return { accountId: id, status: "connected", listings: n };
+    } catch (e) {
+      if (!(e instanceof TicketAuthError)) throw e;
+      await setStatus(uid, id, "needs_otp", e.message);
+      return { accountId: id, status: e.kind, message: e.message };
+    }
+  }
   const pending = pendingOtp.get(`${uid}/${id}`);
   return withTicketBrowser(async (call) => {
     try {

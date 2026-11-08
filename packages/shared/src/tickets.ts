@@ -4,8 +4,8 @@
 import { isShowOn } from "./rules.ts";
 import type { Show } from "./types.ts";
 
-export type TicketPlatform = "bms";
-export const TICKET_PLATFORM_NAMES: Record<TicketPlatform, string> = { bms: "BookMyShow" };
+export type TicketPlatform = "bms" | "district";
+export const TICKET_PLATFORM_NAMES: Record<TicketPlatform, string> = { bms: "BookMyShow", district: "District" };
 
 export type TicketAccountStatus = "connecting" | "connected" | "needs_otp" | "needs_login" | "error";
 

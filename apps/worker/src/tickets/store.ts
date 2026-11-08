@@ -9,9 +9,13 @@ import { db, col } from "../firebase.ts";
 import { decrypt, encrypt, newKey } from "../vault-crypto.ts";
 
 export interface TicketSecret {
+  /** BookMyShow: email or username. District: the phone number (+91…). */
   login: string;
+  /** BookMyShow only; District has no password (OTP login). */
   password: string;
   token?: string | null;
+  /** District's device key, tied to the organizer by the OTP login. */
+  district?: { apiKey: string; secret: string; deviceId: string };
 }
 
 const keyRef = (uid: string) => db.collection("vaultKeys").doc(`${uid}_tickets`);
@@ -52,14 +56,16 @@ export async function ensureSealKey(uid: string): Promise<TicketPublicKey> {
 }
 
 /** Open what the app sealed. Throws when the box was sealed to an older key or tampered with. */
-export async function openFromApp(uid: string, box: SealedBox): Promise<{ login: string; password: string }> {
+export async function openFromApp(uid: string, box: SealedBox, opts: { needPassword?: boolean } = {}): Promise<{ login: string; password: string }> {
   const pub = (await col(uid, "ticketPublic").doc("key").get()).data() as TicketPublicKey | undefined;
   const priv = (await vaultRef(uid, SEAL_DOC).get()).data();
   if (!pub || !priv) throw new Error("The ticket key isn't set up yet. Reload the page and try again.");
   const pkcs8 = await unseal(uid, SEAL_DOC, priv.blob as string);
   const parsed = JSON.parse(await openSealed(box, new Uint8Array(pkcs8), pub.x25519)) as { login?: unknown; password?: unknown };
-  if (typeof parsed.login !== "string" || typeof parsed.password !== "string" || !parsed.login.trim() || !parsed.password) throw new Error("Login and password are both needed.");
-  return { login: parsed.login.trim(), password: parsed.password };
+  const needPassword = opts.needPassword ?? true;
+  if (typeof parsed.login !== "string" || !parsed.login.trim()) throw new Error("The login is needed.");
+  if (needPassword && (typeof parsed.password !== "string" || !parsed.password)) throw new Error("Login and password are both needed.");
+  return { login: parsed.login.trim(), password: typeof parsed.password === "string" ? parsed.password : "" };
 }
 
 export async function saveSecret(uid: string, accountId: string, s: TicketSecret): Promise<void> {

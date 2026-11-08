@@ -17,11 +17,12 @@ import {
   type TicketAccount,
   type TicketLink,
   type TicketListing,
+  type TicketPlatform,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { timeAgo, useNow } from "../lib/data";
 import { connectAccount, disconnectAccount, linkListing, overrideSession, sendOtp, syncNow, useTickets } from "../lib/tickets";
-import { Button, Chip, ConfirmDialog, Empty, Field, IconButton, Info, Menu, MenuItem, PageHeader, SearchSelect, Sheet, Spinner, TextInput, cx } from "@spot/ui";
+import { Button, Chip, ConfirmDialog, Empty, Field, IconButton, Info, Menu, MenuItem, PageHeader, SearchSelect, Segmented, Sheet, Spinner, TextInput, cx } from "@spot/ui";
 import { IconAdd, IconCheck, IconClose, IconMenuDots, IconRefresh, IconTicket, IconWarn } from "@spot/ui";
 
 const STATUS_CHIP: Record<TicketAccount["status"], { label: string; tone: "success" | "error" | "primary" | "neutral" }> = {
@@ -46,16 +47,19 @@ function Synced({ at, now }: { at: number | null | undefined; now: number }) {
 
 function ConnectSheet({ open, onClose, reconnect }: { open: boolean; onClose: () => void; reconnect?: TicketAccount | null }) {
   const { uid } = useApp();
+  const [platform, setPlatform] = useState<TicketPlatform>(reconnect?.platform ?? "bms");
   const [label, setLabel] = useState(reconnect?.label ?? "");
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const district = platform === "district";
+  const ready = login.trim() && (district || password);
   const submit = async () => {
     setBusy(true);
     try {
-      const r = await connectAccount(uid, { label: label.trim() || "BookMyShow account", login, password, accountId: reconnect?.id });
+      const r = await connectAccount(uid, { platform, label: label.trim() || `${TICKET_PLATFORM_NAMES[platform]} account`, login, password: district ? "" : password, accountId: reconnect?.id });
       if (r.status === "connected") toast.success(`Connected. ${r.listings ?? 0} show date${r.listings === 1 ? "" : "s"} found.`);
-      else if (r.status === "needs_otp") toast.message("BookMyShow sent an OTP. Enter it on the account card.");
+      else if (r.status === "needs_otp") toast.message(`${TICKET_PLATFORM_NAMES[platform]} sent an OTP. Enter it on the account card.`);
       else toast.error(r.message ?? "BookMyShow refused the login.");
       if (r.status !== "needs_login") {
         setPassword("");
@@ -71,26 +75,39 @@ function ConnectSheet({ open, onClose, reconnect }: { open: boolean; onClose: ()
     <Sheet
       open={open}
       onClose={onClose}
-      title={reconnect ? `Reconnect ${reconnect.label}` : "Connect BookMyShow"}
+      title={reconnect ? `Reconnect ${reconnect.label}` : "Connect a ticket account"}
       footer={
-        <Button loading={busy} disabled={!login.trim() || !password} onClick={() => void submit()}>
-          Connect
+        <Button loading={busy} disabled={!ready} onClick={() => void submit()}>
+          {district ? "Send OTP" : "Connect"}
         </Button>
       }
     >
       <div className="flex flex-col gap-4">
+        {!reconnect && (
+          <Segmented<TicketPlatform> value={platform} onChange={setPlatform} full options={[{ value: "bms", label: "BookMyShow" }, { value: "district", label: "District" }]} />
+        )}
         <p className="type-body-m text-on-surface-variant">
-          The HostMyShow organizer login (diy.hostmyshow.com). It can be yours or a producer's whose shows you run: they can type it here themselves. The password is encrypted on this device before it's sent, and only your server can read it, to keep the session alive. Disconnect removes it.
+          {district
+            ? "The phone number used on District's organizer dashboard (publish.district.in). It can be yours or a producer's whose shows you run. District texts an OTP to that phone; enter it on the account card. After that your server stays signed in without one."
+            : "The HostMyShow organizer login (diy.hostmyshow.com). It can be yours or a producer's whose shows you run: they can type it here themselves. The password is encrypted on this device before it's sent, and only your server can read it, to keep the session alive. Disconnect removes it."}
         </p>
         <Field label="Whose account" hint="Shown on the card, e.g. “Us” or “Rahul's productions”.">
           <TextInput value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Us" maxLength={60} />
         </Field>
-        <Field label="Login" hint="Email or username used on HostMyShow.">
-          <TextInput value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} />
-        </Field>
-        <Field label="Password">
-          <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" onKeyDown={(e) => e.key === "Enter" && login.trim() && password && void submit()} />
-        </Field>
+        {district ? (
+          <Field label="Phone number" hint="10 digits; +91 is added.">
+            <TextInput type="tel" inputMode="tel" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" placeholder="98765 43210" onKeyDown={(e) => e.key === "Enter" && ready && void submit()} />
+          </Field>
+        ) : (
+          <>
+            <Field label="Login" hint="Email or username used on HostMyShow.">
+              <TextInput value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} />
+            </Field>
+            <Field label="Password">
+              <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" onKeyDown={(e) => e.key === "Enter" && ready && void submit()} />
+            </Field>
+          </>
+        )}
       </div>
     </Sheet>
   );
@@ -393,7 +410,7 @@ export function Tickets() {
     <div className="w-full">
       <PageHeader
         title="Tickets"
-        subtitle="Sales from your and your producers' BookMyShow accounts, per show night"
+        subtitle="Sales from your and your producers' BookMyShow and District accounts, per show night"
         actions={
           <>
             {accounts.length > 0 && (
@@ -413,8 +430,8 @@ export function Tickets() {
             <Spinner />
           </div>
         ) : accounts.length === 0 ? (
-          <Empty icon={IconTicket} title="No ticket accounts yet" action={<Button icon={IconAdd} onClick={() => setConnect({})}>Connect BookMyShow</Button>}>
-            Connect your HostMyShow organizer login, and any producer's whose shows you run. Then pick which show each listing belongs to, and every show night gets one ticket count across all of them.
+          <Empty icon={IconTicket} title="No ticket accounts yet" action={<Button icon={IconAdd} onClick={() => setConnect({})}>Connect an account</Button>}>
+            Connect your BookMyShow (HostMyShow) and District organizer logins, and any producer's whose shows you run. Then pick which show each listing belongs to, and every show night gets one ticket count across all of them.
           </Empty>
         ) : (
           <>
@@ -423,7 +440,7 @@ export function Tickets() {
               <header className="mb-3 flex items-center gap-2">
                 <h2 className="type-title-l">Accounts</h2>
                 <Info label="About ticket accounts">
-                  Your server signs in to each account and reads its listings every 15 minutes, every 5 in the 6 hours before a linked show. BookMyShow sessions last a day; the server renews them with the saved password. When BookMyShow asks for an OTP instead, the card asks you for it, and you get a notice.
+                  Your server signs in to each account and reads its listings every 15 minutes, every 5 in the 6 hours before a linked show. BookMyShow sessions last a day; the server renews them with the saved password. When BookMyShow asks for an OTP instead, the card asks you for it, and you get a notice. District stays signed in after its first OTP; if it ever signs out, the card asks you to connect again.
                 </Info>
               </header>
               <ul className="grid gap-3 sm:grid-cols-2">

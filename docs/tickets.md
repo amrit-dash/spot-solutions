@@ -1,6 +1,6 @@
 # Tickets
 
-Ticket sales from organizer accounts (BookMyShow / HostMyShow DIY today; District and Swiggy Scenes next), tied to
+Ticket sales from organizer accounts (BookMyShow / HostMyShow DIY and District today; Swiggy Scenes next), tied to
 the curator's shows. Types and rules: `packages/shared/src/tickets.ts`. Worker: `apps/worker/src/tickets/`. Page:
 `apps/web/src/routes/Tickets.tsx`. The research proof of concept and capture tools are in `tools/ticket-sync/`.
 
@@ -31,3 +31,11 @@ Chrome that WhatsApp uses, headed but off-screen, loads a page on `diy.hostmysho
 
 A server without a desktop needs a virtual display for the ticket browser: install `xvfb` and start the worker under
 `xvfb-run -a`. Without it, ticket syncs fail with a clear message and nothing else is affected.
+
+## District
+
+Plain HTTPS from the worker (`apps/worker/src/tickets/district.ts`); no browser. `POST /mgw/events/v1/track` issues a
+device `api_key` + `secret`; every call is signed the dashboard's way (`authorization: Hmac …` over `x-date`, HMAC-SHA1).
+Connecting sends an SMS OTP (`sendOTP`, then `loginViaOTP` with `source: "publisher"`), which ties the key to the
+organizer. Listings come from `event-search/search`, then each event's shows with per-ticket-type `finite_amount_sold`.
+Shows hidden from the public page are kept when they have sales.
