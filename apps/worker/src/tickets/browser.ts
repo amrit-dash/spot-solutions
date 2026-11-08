@@ -4,10 +4,24 @@
 // so the window appears once, not every 15 minutes; it closes after IDLE_MS without a sync. Each API call runs as a
 // fetch from a page on the dashboard's own origin, exactly as the dashboard does.
 // A Linux server without a desktop needs a virtual display: run the worker under `xvfb-run` (docs/tickets.md).
-import puppeteer, { type Browser, type Page } from "puppeteer";
+import { createRequire } from "node:module";
+import type { Browser, Page, PuppeteerNode } from "puppeteer";
 import { BMS_API, BMS_HEADERS, BMS_ORIGIN, type ApiCall } from "./bms.ts";
 
 const IDLE_MS = 40 * 60_000;
+
+/**
+ * puppeteer, loaded only when a sync needs it, so the worker always starts. A server whose update didn't install the
+ * worker's own copy (pnpm skipped it) borrows whatsapp-web.js's, which every install has.
+ */
+async function loadPuppeteer(): Promise<PuppeteerNode> {
+  try {
+    return (await import("puppeteer")).default as unknown as PuppeteerNode;
+  } catch {
+    const req = createRequire(import.meta.url);
+    return createRequire(req.resolve("whatsapp-web.js"))("puppeteer") as PuppeteerNode;
+  }
+}
 
 let queue: Promise<unknown> = Promise.resolve();
 let shared: { browser: Browser; page: Page } | null = null;
@@ -37,6 +51,7 @@ async function open(): Promise<{ browser: Browser; page: Page }> {
   if (process.platform === "linux" && !process.env.DISPLAY) {
     throw new Error("Ticket sync needs a display for its browser. Start the worker under xvfb-run (see docs/tickets.md).");
   }
+  const puppeteer = await loadPuppeteer();
   const browser = await puppeteer.launch({
     headless: false,
     executablePath: process.env.CHROME_PATH || undefined,
