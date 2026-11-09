@@ -1,11 +1,11 @@
-// Ticket sales from organizer accounts on BookMyShow (later District, Swiggy Scenes), tied to the curator's shows.
+// Ticket sales from organizer accounts on BookMyShow, District and Swiggy Scenes, tied to the curator's shows.
 // The worker pulls listings per connected account (apps/worker/src/tickets); the curator links each listing to a show by
 // hand (no fuzzy matching). Totals per show night are computed here so the app and the worker agree.
 import { isShowOn } from "./rules.ts";
 import type { Show } from "./types.ts";
 
-export type TicketPlatform = "bms" | "district";
-export const TICKET_PLATFORM_NAMES: Record<TicketPlatform, string> = { bms: "BookMyShow", district: "District" };
+export type TicketPlatform = "bms" | "district" | "swiggy";
+export const TICKET_PLATFORM_NAMES: Record<TicketPlatform, string> = { bms: "BookMyShow", district: "District", swiggy: "Swiggy Scenes" };
 
 export type TicketAccountStatus = "connecting" | "connected" | "needs_otp" | "needs_login" | "error";
 

@@ -202,7 +202,7 @@ service cloud.firestore {
         allow create, update: if isOwner(uid)
           && request.resource.data.keys().hasOnly(['platform', 'accountId', 'listingId', 'showId', 'showIds', 'sessionOverrides', 'updatedAt'])
           && (!('showIds' in request.resource.data) || (request.resource.data.showIds is list && request.resource.data.showIds.size() <= 14))
-          && request.resource.data.platform in ['bms', 'district']
+          && request.resource.data.platform in ['bms', 'district', 'swiggy']
           && request.resource.data.accountId is string && request.resource.data.listingId is string
           && (request.resource.data.showId == null || request.resource.data.showId is string)
           && request.resource.data.updatedAt is number;

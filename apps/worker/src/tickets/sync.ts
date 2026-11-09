@@ -2,19 +2,25 @@
 // cadence. Runs only on the server holding the account's lease (commands are gated by fleet.gate; the tick is called
 // from scheduler.ts for held accounts only). One account failing never stops the others or the worker.
 import { randomBytes } from "node:crypto";
-import { maskLogin, type SealedBox, type TicketAccount, type TicketAccountStatus, type TicketLink, type TicketListing, type TicketPlatform } from "@spot/shared";
+import { maskLogin, TICKET_PLATFORM_NAMES, type SealedBox, type TicketAccount, type TicketAccountStatus, type TicketLink, type TicketListing, type TicketPlatform } from "@spot/shared";
 import { col, db, expireAt, FieldValue } from "../firebase.ts";
 import { TTL_DAYS } from "@spot/shared";
 import { TicketAuthError, collectBms, loginOtp, loginPassword, tokenSecondsLeft, type ApiCall } from "./bms.ts";
 import { withTicketBrowser } from "./browser.ts";
 import { collectDistrict, loginDistrictOtp, newDistrictKey, nodeFetch, normalisePhone, sendDistrictOtp } from "./district.ts";
 import { deleteSecret, ensureSealKey, loadSecret, openFromApp, saveSecret } from "./store.ts";
+import { collectSwiggy, loginSwiggyOtp, refreshSwiggy, sendSwiggyOtp, swiggyTokenSecondsLeft } from "./swiggy.ts";
 
 /** Log in again when the token has less than this left, so an OTP request lands at a calm moment, not mid-show. */
 const RENEW_BEFORE_S = 3 * 3600;
 const EVERY_MS = 15 * 60_000;
 const NEAR_SHOW_EVERY_MS = 5 * 60_000;
 const NEAR_SHOW_MS = 6 * 3600_000;
+/** Swiggy tokens last ~5 days; renew with 2 left. Each renewal spends the refresh token, so it isn't done every tick. */
+const SWIGGY_RENEW_BEFORE_S = 2 * 86400;
+
+/** Only BookMyShow needs the ticket browser (Cloudflare); the others are plain HTTPS. */
+const needsBrowser = (a: Pick<TicketAccount, "platform">) => a.platform === "bms";
 
 /** mfaTokens waiting for an OTP, per account. In memory: an OTP is only good for minutes anyway. */
 const pendingOtp = new Map<string, { mfaToken?: string; at: number }>();
@@ -62,9 +68,26 @@ async function freshToken(call: ApiCall, uid: string, accountId: string): Promis
   return token;
 }
 
-/** Pull one account. `call` is the ticket browser (BookMyShow); District needs none and ignores it. */
+/** Swiggy: the saved access token, renewed (and the new pair saved at once) when it is near expiry. */
+async function freshSwiggyToken(uid: string, accountId: string): Promise<string> {
+  const s = await loadSecret(uid, accountId);
+  if (!s?.swiggy) throw new TicketAuthError("needs_login", "This account's Swiggy login isn't saved on the servers any more. Connect it again.");
+  if (swiggyTokenSecondsLeft(s.swiggy.accessToken) > SWIGGY_RENEW_BEFORE_S) return s.swiggy.accessToken;
+  const next = await refreshSwiggy(nodeFetch, s.swiggy);
+  await saveSecret(uid, accountId, { ...s, swiggy: next });
+  return next.accessToken;
+}
+
+/** Pull one account. `call` is the ticket browser (BookMyShow); District and Swiggy need none and ignore it. */
 async function syncOne(call: ApiCall | null, uid: string, acc: TicketAccount, notifyOnAuth: boolean) {
   try {
+    if (acc.platform === "swiggy") {
+      const token = await freshSwiggyToken(uid, acc.id);
+      const rows = await collectSwiggy(nodeFetch, token, acc.id);
+      await saveListings(uid, acc.id, rows);
+      await setStatus(uid, acc.id, "connected", null, { lastSyncedAt: Date.now(), lastError: null, tokenExpiresAt: Date.now() + swiggyTokenSecondsLeft(token) * 1000 });
+      return rows.length;
+    }
     if (acc.platform === "district") {
       const s = await loadSecret(uid, acc.id);
       if (!s?.district) throw new TicketAuthError("needs_login", "This account's District login isn't saved on the servers any more. Connect it again.");
@@ -98,9 +121,9 @@ export async function syncTickets(uid: string, onlyId?: string, opts: { notify?:
   if (!list.length) return { accounts: 0, listings: 0 };
   lastRun.set(uid, Date.now());
   let listings = 0;
-  // District is plain HTTPS; only BookMyShow accounts open the ticket browser.
-  for (const acc of list.filter((a) => a.platform === "district")) listings += await syncOne(null, uid, acc, opts.notify ?? true);
-  const bms = list.filter((a) => a.platform !== "district");
+  // District and Swiggy are plain HTTPS; only BookMyShow accounts open the ticket browser.
+  for (const acc of list.filter((a) => !needsBrowser(a))) listings += await syncOne(null, uid, acc, opts.notify ?? true);
+  const bms = list.filter(needsBrowser);
   if (bms.length) {
     await withTicketBrowser(async (call) => {
       for (const acc of bms) listings += await syncOne(call, uid, acc, opts.notify ?? true);
@@ -149,12 +172,13 @@ export async function ticketConnect(uid: string, payload: Record<string, unknown
   // The sealed login is useless without the private key, but it still doesn't stay on the command doc.
   if (commandId) await col(uid, "commands").doc(commandId).update({ payload: FieldValue.delete() }).catch(() => undefined);
   const box = payload.sealed as SealedBox;
-  const platform: TicketPlatform = payload.platform === "district" ? "district" : "bms";
-  const label = String(payload.label ?? "").trim().slice(0, 60) || (platform === "district" ? "District account" : "BookMyShow account");
+  const platform: TicketPlatform = payload.platform === "district" || payload.platform === "swiggy" ? payload.platform : "bms";
+  const label = String(payload.label ?? "").trim().slice(0, 60) || `${TICKET_PLATFORM_NAMES[platform]} account`;
   const id = typeof payload.accountId === "string" && payload.accountId ? payload.accountId : randomBytes(6).toString("hex");
   const { login, password } = await openFromApp(uid, box, { needPassword: platform === "bms" });
   const existing = (await accounts(uid).doc(id).get()).data() as TicketAccount | undefined;
   if (platform === "district") return connectDistrict(uid, id, label, login, existing);
+  if (platform === "swiggy") return connectSwiggy(uid, id, label, login, existing);
   const acc: TicketAccount = { id, platform: "bms", label, loginHint: maskLogin(login), status: "connecting", statusText: "Signing in to BookMyShow…", connectedAt: existing?.connectedAt ?? Date.now() };
   await accounts(uid).doc(id).set(acc, { merge: true });
   await saveSecret(uid, id, { login, password, token: null });
@@ -194,14 +218,43 @@ async function connectDistrict(uid: string, id: string, label: string, rawPhone:
   }
 }
 
+/** Swiggy: Swiggy texts an OTP; the session it returns waits in the vault until the card sends the code. */
+async function connectSwiggy(uid: string, id: string, label: string, rawPhone: string, existing?: TicketAccount) {
+  const phone = normalisePhone(rawPhone);
+  const acc: TicketAccount = { id, platform: "swiggy", label, loginHint: maskLogin(phone), status: "connecting", statusText: "Asking Swiggy for an OTP…", connectedAt: existing?.connectedAt ?? Date.now() };
+  await accounts(uid).doc(id).set(acc, { merge: true });
+  try {
+    const otpSession = await sendSwiggyOtp(nodeFetch, phone);
+    await saveSecret(uid, id, { login: phone, password: "", swiggyOtp: otpSession });
+    await setStatus(uid, id, "needs_otp", `Swiggy sent an OTP by SMS to ${maskLogin(phone)}. Enter it to finish connecting.`);
+    return { accountId: id, status: "needs_otp", message: "Swiggy sent an OTP." };
+  } catch (e) {
+    await setStatus(uid, id, "error", (e as Error).message);
+    throw e;
+  }
+}
+
 export async function ticketOtp(uid: string, payload: Record<string, unknown>, commandId?: string) {
   if (commandId) await col(uid, "commands").doc(commandId).update({ payload: FieldValue.delete() }).catch(() => undefined);
   const id = String(payload.accountId ?? "");
   const otp = String(payload.otp ?? "").replace(/\s+/g, "");
-  if (!/^\d{4,8}$/.test(otp)) throw new Error("The OTP is the 4 to 8 digit code BookMyShow sent.");
+  if (!/^\d{4,8}$/.test(otp)) throw new Error("The OTP is the 4 to 8 digit code sent by SMS.");
   const s = await loadSecret(uid, id);
   const acc = (await accounts(uid).doc(id).get()).data() as TicketAccount | undefined;
   if (!s || !acc) throw new Error("This account isn't connecting any more. Start again with Connect.");
+  if (acc.platform === "swiggy") {
+    if (!s.swiggyOtp) throw new Error("This account isn't connecting any more. Start again with Connect.");
+    try {
+      const tokens = await loginSwiggyOtp(nodeFetch, s.swiggyOtp, otp);
+      await saveSecret(uid, id, { login: s.login, password: "", swiggy: tokens });
+      const n = await syncOne(null, uid, { ...acc, status: "connected" }, false);
+      return { accountId: id, status: "connected", listings: n };
+    } catch (e) {
+      if (!(e instanceof TicketAuthError)) throw e;
+      await setStatus(uid, id, "needs_otp", e.message);
+      return { accountId: id, status: e.kind, message: e.message };
+    }
+  }
   if (acc.platform === "district") {
     if (!s.district) throw new Error("This account isn't connecting any more. Start again with Connect.");
     try {

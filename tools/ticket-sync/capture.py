@@ -43,6 +43,8 @@ def main() -> None:
         except Exception:
             browser = p.chromium.launch(headless=False)
         context = browser.new_context(
+            # Reuse a saved session so a second capture doesn't need another login/OTP.
+            storage_state=str(state_path) if state_path.exists() else None,
             record_har_path=str(har_path),
             record_har_content="embed",
             record_har_mode="full",

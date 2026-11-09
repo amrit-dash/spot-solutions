@@ -1,6 +1,6 @@
 # Tickets
 
-Ticket sales from organizer accounts (BookMyShow / HostMyShow DIY and District today; Swiggy Scenes next), tied to
+Ticket sales from organizer accounts (BookMyShow / HostMyShow DIY, District and Swiggy Scenes), tied to
 the curator's shows. Types and rules: `packages/shared/src/tickets.ts`. Worker: `apps/worker/src/tickets/`. Page:
 `apps/web/src/routes/Tickets.tsx`. The research proof of concept and capture tools are in `tools/ticket-sync/`.
 
@@ -39,3 +39,13 @@ device `api_key` + `secret`; every call is signed the dashboard's way (`authoriz
 Connecting sends an SMS OTP (`sendOTP`, then `loginViaOTP` with `source: "publisher"`), which ties the key to the
 organizer. Listings come from `event-search/search`, then each event's shows with per-ticket-type `finite_amount_sold`.
 Shows hidden from the public page are kept when they have sales.
+
+## Swiggy Scenes
+
+Plain HTTPS to `events-proxy.swiggy.com/scenes` (`apps/worker/src/tickets/swiggy.ts`); no browser. Connecting sends an SMS
+OTP (`ozone/v1/accounts/sendVerificationCode`, then `signInWithOTP`), which returns an access token (JWT, about 5 days)
+and a refresh token. With under 2 days left the worker calls `ozone/v1/token/refresh`; that spends the old refresh token,
+so the new pair is saved before anything else. Listings: `dashboard/auth/v1/event/list` (live events), then
+`show/list` per event venue, where each ticket type's `inventory` is its total (it doesn't drop as tickets sell). Sold is
+the sum of `diner_count` over the event's non-cancelled bookings from `dashboard/auth/v1/report`. Buyers' names, phones
+and emails in that report are dropped in the worker and never stored.

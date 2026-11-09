@@ -9,13 +9,16 @@ import { db, col } from "../firebase.ts";
 import { decrypt, encrypt, newKey } from "../vault-crypto.ts";
 
 export interface TicketSecret {
-  /** BookMyShow: email or username. District: the phone number (+91…). */
+  /** BookMyShow: email or username. District and Swiggy: the phone number (+91…). */
   login: string;
-  /** BookMyShow only; District has no password (OTP login). */
+  /** BookMyShow only; District and Swiggy have no password (OTP login). */
   password: string;
   token?: string | null;
   /** District's device key, tied to the organizer by the OTP login. */
   district?: { apiKey: string; secret: string; deviceId: string };
+  /** Swiggy Scenes: the token pair (the refresh token changes on every renewal), or the OTP still being waited for. */
+  swiggy?: { accessToken: string; refreshToken: string; userId: string };
+  swiggyOtp?: { userId: string; sessionInfo: string };
 }
 
 const keyRef = (uid: string) => db.collection("vaultKeys").doc(`${uid}_tickets`);
