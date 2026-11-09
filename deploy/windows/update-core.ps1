@@ -56,6 +56,12 @@ if (-not $Task) {
 if ($Task -notin @("update", "local-on", "local-off", "move-data", "move-cleanup")) { throw "Unknown task '$Task'." }
 
 $From = if (Test-Path "$AppDir\VERSION") { (Get-Content "$AppDir\VERSION" -Raw).Trim() } else { "none" }
+# The task runs hidden as SYSTEM: keep what it prints (pnpm, the doctor, robocopy) in data\update.log, so a stuck or failed
+# update can be read afterwards. One run per file; the previous one is kept as update.prev.log.
+try {
+  if (Test-Path "$DataDir\update.log") { Move-Item -Force "$DataDir\update.log" "$DataDir\update.prev.log" }
+  Start-Transcript -Path "$DataDir\update.log" -Force | Out-Null
+} catch { }
 $To = $null
 $Started = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
 
