@@ -417,7 +417,7 @@ try {
 
   Set-Progress "running" "Installing files"
   $oldLock = if (Test-Path "$AppDir\pnpm-lock.yaml") { (Get-FileHash "$AppDir\pnpm-lock.yaml" -Algorithm SHA256).Hash } else { "none" }
-  # VERSION is written last, once everything below worked: a half-finished update is retried instead of "already up to date".
+  # VERSION is written once the files, packages and browser check worked: a half-finished update is retried instead of "already up to date".
   $newVersion = (Get-Content "$stage\VERSION" -Raw).Trim()
   Remove-Item -Force "$stage\VERSION"
   Stop-WorkerProcesses   # nothing may hold the files or run next to the new code
@@ -442,19 +442,21 @@ try {
   $env:NBS_DATA_DIR = $DataDir; $env:NBS_ENV_FILE = "$AppDir\apps\worker\.env"
   & "$NodeDir\node.exe" "$AppDir\apps\worker\console\doctor-run.mjs" --repair
   if ($LASTEXITCODE -ne 0) { throw "Something this version needs couldn't be set up (see the console log). Check the internet connection and try again." }
+  # The new version is in place and can run: say so now. The steps below are housekeeping; one of them failing used to
+  # leave the old VERSION, so every automatic update stopped the worker and installed the same release again.
+  [IO.File]::WriteAllText("$AppDir\VERSION", "$newVersion`n", $Utf8)
   # Windows Update can reset sleep, lid and restart settings: put the chosen ones (data\power.json) back. Never fails the update.
   Set-Progress "running" "Re-applying stay-on settings"
   & "$NodeDir\node.exe" "$AppDir\apps\worker\console\power-run.mjs" --apply
   Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
-  Update-Launcher
+  try { Update-Launcher } catch { Log "Couldn't refresh the launcher: $($_.Exception.Message)" }
   Set-Progress "running" "Refreshing shortcuts and icons"
-  Remove-LegacyInstall | Out-Null   # an old Spot Solutions server or shortcut left on this PC
+  try { Remove-LegacyInstall | Out-Null } catch { Log "Couldn't remove an old install: $($_.Exception.Message)" }   # an old Spot Solutions server or shortcut left on this PC
   Install-Shortcuts
 
   Set-Progress "running" "Restarting the worker"
   Start-Worker
-  if (-not (Test-NoLocal)) { Invoke-Pull (Get-ModelName $lmodel) }
-  [IO.File]::WriteAllText("$AppDir\VERSION", "$newVersion`n", $Utf8)
+  if (-not (Test-NoLocal)) { try { Invoke-Pull (Get-ModelName $lmodel) } catch { Log "Model download failed; it is retried on the next update: $($_.Exception.Message)" } }
   Set-Progress "done" "Updated to $latest"
   # Older installs allowed port 7420 on the Private profile only: also allow Domain (never Public), so other devices can open the console.
   try {

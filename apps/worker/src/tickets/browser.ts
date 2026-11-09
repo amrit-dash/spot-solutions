@@ -63,9 +63,23 @@ async function open(): Promise<{ browser: Browser; page: Page }> {
     handleSIGHUP: false,
   });
   const page = (await browser.pages())[0] ?? (await browser.newPage());
+  // A small page on the dashboard's origin is enough for the API's CORS check; the full app isn't needed. Load it before
+  // minimising: on Windows a load started in a window that is being minimised can come back net::ERR_ABORTED. One retry
+  // covers a first load that Chrome cut short while it was still starting up.
+  try {
+    await page.goto(`${BMS_ORIGIN}/robots.txt`, { waitUntil: "domcontentloaded", timeout: 45_000 });
+  } catch (e) {
+    if (!/ERR_ABORTED|frame was detached|Navigating frame/i.test((e as Error).message)) {
+      await browser.close().catch(() => undefined);
+      throw e;
+    }
+    await new Promise((r) => setTimeout(r, 2_000));
+    await page.goto(`${BMS_ORIGIN}/robots.txt`, { waitUntil: "domcontentloaded", timeout: 45_000 }).catch(async (e2: Error) => {
+      await browser.close().catch(() => undefined);
+      throw e2;
+    });
+  }
   await minimise(page);
-  // A small page on the dashboard's origin is enough for the API's CORS check; the full app isn't needed.
-  await page.goto(`${BMS_ORIGIN}/robots.txt`, { waitUntil: "domcontentloaded", timeout: 45_000 });
   browser.on("disconnected", () => {
     if (shared?.browser === browser) shared = null;
   });
