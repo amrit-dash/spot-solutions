@@ -70,3 +70,4 @@ export * from "./revealPolicy.ts";
 export * from "./media.ts";
 export * from "./experience.ts";
 export * from "./tickets.ts";
+export * from "./logTail.ts";

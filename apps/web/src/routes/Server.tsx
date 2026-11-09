@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { TTL_DAYS, clock, deriveServer, netNotice, phoneNotice, restartLabel, unreachableNotice, type ServerStatus } from "@spot/shared";
+import { TTL_DAYS, clock, deriveServer, mergeLogTail, netNotice, phoneNotice, restartLabel, unreachableNotice, type ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "@spot/ui/firebase";
 import { expireAt, timeAgo, useNow } from "../lib/data";
@@ -218,15 +218,20 @@ function ServerCard({ s }: { s: ServerStatus }) {
 
 /**
  * The worker log. It follows new lines only while you're at the bottom: scroll up to read and it stays put through the
- * 30-second refreshes (it used to jump back down on every one); scroll back to the bottom and it follows again.
+ * 30-second refreshes (it used to jump back down on every one); scroll back to the bottom and it follows again. Lines
+ * that the server's window drops stay on screen.
  */
 function LogView({ lines }: { lines: string[] }) {
   const ref = useRef<HTMLPreElement>(null);
   const pinned = useRef(true);
+  // The server sends its newest 120 lines each time, so old ones fall off the top. Keep what's already shown and add only
+  // the new lines, so the text being read never moves.
+  const kept = useRef<string[]>([]);
+  const shown = useMemo(() => (kept.current = mergeLogTail(kept.current, lines)), [lines]);
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [lines]);
+  }, [shown]);
   return (
     <pre
       ref={ref}
@@ -236,7 +241,7 @@ function LogView({ lines }: { lines: string[] }) {
       }}
       className="max-h-80 overflow-auto bg-surface-container px-4 py-3 font-mono text-xs leading-5 whitespace-pre-wrap text-on-surface-variant"
     >
-      {lines.join("\n")}
+      {shown.join("\n")}
     </pre>
   );
 }

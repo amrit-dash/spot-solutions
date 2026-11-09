@@ -1378,7 +1378,7 @@ function render() {
     setup: sec("setup", k ? "Setup" : "Connect this server", setupSummary, setupBody, { open: !setupDone }),
     ai: aiCard(s),
     updates: updatesCard(s),
-    logs: sec("logs", "Worker logs", logSummary(s.logs), `<pre class="logs" id="logs">${esc(s.logs)}</pre>`, { open: false, cls: "tight" }),
+    logs: sec("logs", "Worker logs", logSummary(s.logs), `<pre class="logs" id="logs">${esc(logText())}</pre>`, { open: false, cls: "tight" }),
   };
   if (phone && phone.qr) blocks.phone = sec("phone", "Open on your phone", "Scan with your phone's camera", `<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center"><pre class="qr" aria-label="QR code for this console">${esc(phone.qr)}</pre><div class="grow" style="min-width:220px"><div class="muted small">Scan while your phone is on the same Wi-Fi. The link includes this server's access code, so only share it with people who should manage the server.</div><div class="mono small" style="margin-top:8px;word-break:break-all">${esc(phone.url)}</div></div></div>`, { open: false });
   blockIds = DEFAULT_ORDER.filter((id) => blocks[id]);
@@ -1711,6 +1711,22 @@ async function run(label, fn) {
 
 /** Worker log scroll: follow the newest lines (pinned) or stay where the owner scrolled to (top). */
 const logView = { pinned: true, top: 0 };
+
+/**
+ * The log as shown. Each refresh brings the server's newest lines, so the oldest drop off the top; merging onto what is
+ * already shown keeps the text being read in place. Same as packages/shared/src/logTail.ts (mergeLogTail).
+ */
+let logLines = [];
+function mergeLogTail(prev, next, max = 2000) {
+  if (!prev.length) return next.slice(-max);
+  for (let k = Math.min(prev.length, next.length); k > 0; k--) {
+    let same = true;
+    for (let i = 0; i < k; i++) if (prev[prev.length - k + i] !== next[i]) { same = false; break; }
+    if (same) return k === next.length ? prev : [...prev, ...next.slice(k)].slice(-max);
+  }
+  return [...prev, ...next].slice(-max);
+}
+const logText = () => logLines.join("\n");
 
 function wire() {
   const s = state;
@@ -2048,11 +2064,12 @@ async function refresh(force = false) {
     const wantScan = isOpen("storage", Boolean(state?.storage?.low)) && shown("storage") || moveRunning();
     const [st, a, c, sg, cl] = await Promise.all([api("/api/status"), api("/api/ai").catch(() => aiv), api("/api/connect").catch(() => conn), api(`/api/storage${wantScan ? "?scan=1" : ""}`).catch(() => stor), api("/api/cloud").catch(() => cloudv)]);
     state = st; aiv = a; conn = c; stor = sg; cloudv = cl;
+    logLines = mergeLogTail(logLines, (st.logs || "").split(/\r?\n/).filter(Boolean));
     if (bootId === null) bootId = st.boot;
     else if (st.boot !== bootId) return location.reload(); // restarted on new code: load the new page
     if (restarting && !st.update.running) restarting = false;
     if (!holdRender() || force) { if (force) { editing = false; ddOpen = null; } render(); }
-    else { const l = $("#logs"); if (l) l.textContent = state.logs; }
+    else { const l = $("#logs"); if (l) { const top = l.scrollTop; l.textContent = logText(); l.scrollTop = logView.pinned ? l.scrollHeight : top; } }
   } catch (e) {
     if (e.status === 401) $("#app").innerHTML = `<div class="locked">${logo}<h1 style="margin-top:16px">Locked</h1><p class="muted">Open this page with the link the installer printed (it ends in <span class="mono">?token=…</span>).<br>Forgot it? On the server run <span class="mono">sudo nbs-console-url</span> (Linux), or open the <b>Nothing BOT Server Console</b> shortcut on the server's desktop (Windows), or use the Nothing BOT Server app (Mac).</p></div>`;
     else if (state?.update?.running || restarting) { restarting = true; render(); } // the console restarts itself during an update; keep trying
