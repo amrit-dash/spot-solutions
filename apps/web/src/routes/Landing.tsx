@@ -233,7 +233,7 @@ export function Landing() {
             ].map(([href, label]) => (
               <a key={href} href={href} className="state-layer rounded-full px-3 py-2 type-label-l text-on-surface-variant">{label}</a>
             ))}
-            <a href="https://github.com/amrit-contour/spot-solutions" target="_blank" rel="noreferrer" className="state-layer rounded-full px-3 py-2 type-label-l text-on-surface-variant">GitHub</a>
+            <a href="https://github.com/amrit-dash/spot-solutions" target="_blank" rel="noreferrer" className="state-layer rounded-full px-3 py-2 type-label-l text-on-surface-variant">GitHub</a>
           </nav>
           <Button size="sm" variant="text" onClick={() => run("demo")} loading={busy === "demo"} className="max-sm:hidden">
             Live demo
@@ -412,7 +412,7 @@ export function Landing() {
           <div className="flex-1" />
           <a className="hover:text-on-surface" href="/privacy">Privacy</a>
           <a className="hover:text-on-surface" href="/terms">Terms</a>
-          <a className="hover:text-on-surface" href="https://github.com/amrit-contour/spot-solutions" target="_blank" rel="noreferrer">GitHub</a>
+          <a className="hover:text-on-surface" href="https://github.com/amrit-dash/spot-solutions" target="_blank" rel="noreferrer">GitHub</a>
         </div>
       </footer>
     </div>

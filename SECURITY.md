@@ -4,7 +4,7 @@ This covers Nothing BOT Curate, Nothing BOT Comedy and Nothing BOT Server. They 
 
 ## Report a vulnerability
 
-Use GitHub's private vulnerability reporting: open the [Security tab](https://github.com/amrit-contour/spot-solutions/security/advisories/new) of this repo and choose **Report a vulnerability**. Please don't open a public issue for a security problem.
+Use GitHub's private vulnerability reporting: open the [Security tab](https://github.com/amrit-dash/spot-solutions/security/advisories/new) of this repo and choose **Report a vulnerability**. Please don't open a public issue for a security problem.
 
 Include what you found, the steps to reproduce it, and what an attacker could do with it. If you have run something against a live project, say which. The maintainer replies in the advisory thread.
 
